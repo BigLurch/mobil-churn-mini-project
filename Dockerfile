@@ -31,4 +31,6 @@ RUN chown -R churn:churn /app/outputs
 
 USER churn:churn
 
-CMD ["python", "-m", "churn.score"]
+EXPOSE 8000
+
+CMD ["uvicorn", "churn.api:app", "--host", "0.0.0.0", "--port", "8000"]
