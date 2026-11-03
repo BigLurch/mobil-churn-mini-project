@@ -18,23 +18,40 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-from churn.data import DATAKATALOG, KATEGORISKA, NUMERISKA, dela_upp, las_data, skapa_features
+from churn.data import (
+    DATAKATALOG,
+    KATEGORISKA,
+    NUMERISKA,
+    dela_upp,
+    las_data,
+    skapa_features,
+)
 
 SEED = 42
+REGULARIZATION_C = 0.5
 DATAFIL = "kundbas.csv"
 
 
 def bygg_modell() -> Pipeline:
     forbehandling = ColumnTransformer(
         [
-            ("num", make_pipeline(SimpleImputer(strategy="median"), StandardScaler()), NUMERISKA),
+            (
+                "num",
+                make_pipeline(SimpleImputer(strategy="median"), StandardScaler()),
+                NUMERISKA,
+            ),
             ("kat", OneHotEncoder(handle_unknown="ignore"), KATEGORISKA),
         ]
     )
     return Pipeline(
         [
             ("forbehandling", forbehandling),
-            ("klassificerare", LogisticRegression(max_iter=1000, random_state=SEED)),
+            (
+                "klassificerare",
+                LogisticRegression(
+                    max_iter=1000, random_state=SEED, C=REGULARIZATION_C
+                ),
+            ),
         ]
     )
 
@@ -59,7 +76,9 @@ def main(utkatalog: Path = Path("outputs")) -> None:
     # GITHUB_SHA finns bara i GitHub Actions. Lokalt står det "lokal".
     matvarden["commit"] = os.environ.get("GITHUB_SHA", "lokal")
     matvarden["datafil"] = DATAFIL
-    matvarden["data_sha256"] = hashlib.sha256((DATAKATALOG / DATAFIL).read_bytes()).hexdigest()
+    matvarden["data_sha256"] = hashlib.sha256(
+        (DATAKATALOG / DATAFIL).read_bytes()
+    ).hexdigest()
     utkatalog.mkdir(exist_ok=True)
     joblib.dump(modell, utkatalog / "modell.joblib")
     (utkatalog / "matvarden.json").write_text(json.dumps(matvarden, indent=2))
@@ -74,21 +93,28 @@ def main(utkatalog: Path = Path("outputs")) -> None:
     # Use the run name supplied locally or by GitHub Actions.
     run_name = os.environ.get("MLFLOW_RUN_NAME", "model-local")
     with mlflow.start_run(run_name=run_name):
-        mlflow.log_params({
-            "model_type": "Logistic Regression",
-            "random_state": SEED,
-            "test_size": 0.25,
-            "max_iter": modell.named_steps["klassificerare"].max_iter,
-        })
-        mlflow.log_metrics({
-            "roc_auc": matvarden["roc_auc"],
-            "accuracy":matvarden["accuracy"],
-        })
-        mlflow.set_tags({
-            "commit": matvarden["commit"],
-            "datafil": matvarden["datafil"],
-            "data_sha256": matvarden["data_sha256"],
-        })
+        mlflow.log_params(
+            {
+                "model_type": "Logistic Regression",
+                "random_state": SEED,
+                "test_size": 0.25,
+                "max_iter": modell.named_steps["klassificerare"].max_iter,
+                "C": modell.named_steps["klassificerare"].C,
+            }
+        )
+        mlflow.log_metrics(
+            {
+                "roc_auc": matvarden["roc_auc"],
+                "accuracy": matvarden["accuracy"],
+            }
+        )
+        mlflow.set_tags(
+            {
+                "commit": matvarden["commit"],
+                "datafil": matvarden["datafil"],
+                "data_sha256": matvarden["data_sha256"],
+            }
+        )
         # Keep the exact model and data produced by this traning run
         mlflow.log_artifact(str(utkatalog / "modell.joblib"))
         mlflow.log_artifact(str(utkatalog / "matvarden.json"))
