@@ -252,18 +252,8 @@ jobs:
           cache-from: type=gha,scope=churn-vg
           cache-to: type=gha,scope=churn-vg,mode=max
 
-
       - name: Run Docker smoke-test
         run: bash scripts/smoke_test.sh churn-docker:ci
-
-      - name: Inspect published image platforms
-        if: >-
-          github.event_name == 'push' &&
-          github.ref == 'refs/heads/main' &&
-          github.repository == 'BigLurch/mobil-churn-mini-project'
-        env:
-          IMAGE: ghcr.io/biglurch/mobil-churn-mini-project:${{ github.sha }}
-        run: docker buildx imagetools inspect "$IMAGE"
 
       - name: Log in to GHCR
         if: >-
@@ -276,7 +266,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      
       - name: Build and publish multi-platform image
         if: >-
           github.event_name == 'push' &&
@@ -291,6 +280,39 @@ jobs:
           tags: ghcr.io/biglurch/mobil-churn-mini-project:${{ github.sha }}
           cache-from: type=gha,scope=churn-vg
           cache-to: type=gha,scope=churn-vg,mode=max
+   
+      - name: Inspect and verify published image platforms
+        if: >-
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          github.repository == 'BigLurch/mobil-churn-mini-project'
+        env:
+          IMAGE: ghcr.io/biglurch/mobil-churn-mini-project:${{ github.sha }}
+        run: |
+          docker buildx imagetools inspect "$IMAGE"
+
+          docker buildx imagetools inspect "$IMAGE" --raw > manifest.json
+
+          python - <<'PY'
+          import json
+
+          with open("manifest.json", encoding="utf-8") as f:
+              manifest = json.load(f)
+
+          platforms = {
+              (item["platform"]["os"], item["platform"]["architecture"])
+              for item in manifest.get("manifests", [])
+              if "platform" in item
+          }
+
+          required = {("linux", "amd64"), ("linux", "arm64")}
+          missing = required - platforms
+
+          if missing:
+              raise SystemExit(f"Missing required platforms: {missing}")
+
+          print("PASS: AMD64 and ARM64 are published")
+          PY
 
       - name: Pull and verify published image
         if: >-
