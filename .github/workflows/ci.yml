@@ -252,8 +252,24 @@ jobs:
           cache-from: type=gha,scope=churn-vg
           cache-to: type=gha,scope=churn-vg,mode=max
 
+      
       - name: Run Docker smoke-test
-        run: bash scripts/smoke_test.sh churn-docker:ci
+        run: |
+          bash scripts/smoke_test.sh churn-docker:ci
+
+          trap 'docker rm -f churn-health-test >/dev/null 2>&1 || true' EXIT
+
+          docker run -d --rm --name churn-health-test \
+            -p 127.0.0.1:18080:8000 churn-docker:ci
+
+          curl --fail --show-error --retry 15 \
+            --retry-delay 1 --retry-connrefused \
+            http://127.0.0.1:18080/health
+
+          echo "PASS: FastAPI health check"
+
+          docker stop churn-health-test
+
 
       - name: Log in to GHCR
         if: >-
