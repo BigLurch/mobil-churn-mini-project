@@ -250,10 +250,40 @@ jobs:
           load: true
           tags: churn-docker:ci
           cache-from: type=gha,scope=churn-vg
-          cache-to: type=gha,scope=churn-vg,mode=max
-
+          cache-to: type=gha,scope=churn-vg,mode=max     
+      
       - name: Run Docker smoke-test
-        run: bash scripts/smoke_test.sh churn-docker:ci
+        run: |
+          bash scripts/smoke_test.sh churn-docker:ci
+
+          trap 'docker rm -f churn-health-test >/dev/null 2>&1 || true' EXIT
+
+          docker run -d --rm --name churn-health-test \
+            -p 127.0.0.1:18080:8000 churn-docker:ci
+
+          echo "Waiting for FastAPI health endpoint..."
+
+          HEALTH_OK=false
+
+          for i in $(seq 1 30); do
+            if curl --fail --silent --show-error \
+              --max-time 2 \
+              http://127.0.0.1:18080/health; then
+              HEALTH_OK=true
+              break
+            fi
+
+            sleep 1
+          done
+
+          if [ "$HEALTH_OK" != "true" ]; then
+            echo "FAIL: FastAPI health check"
+            docker logs churn-health-test || true
+            exit 1
+          fi
+
+          echo
+          echo "PASS: FastAPI health check"
 
       - name: Log in to GHCR
         if: >-
