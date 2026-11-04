@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+patches:
+  - path: deployment-patch.yaml
+
+images:
+  - name: ghcr.io/biglurch/mobil-churn-mini-project
+    newTag: 23a1409e04c38d3ff50e5cdebaf90fb06be5aac1

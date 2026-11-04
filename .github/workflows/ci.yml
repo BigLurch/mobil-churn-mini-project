@@ -234,9 +234,13 @@ jobs:
           print("PASS: Model commit matches workflow commit")
           PY
      
+
+      - name: Set up QEMU for multi-platform builds
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
+     
       - name: Build Docker image with cache
         uses: docker/build-push-action@v6
         with:
@@ -263,28 +267,27 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Tag and publish approved image
+      
+      - name: Build and publish multi-platform image
         if: >-
           github.event_name == 'push' &&
           github.ref == 'refs/heads/main' &&
           github.repository == 'BigLurch/mobil-churn-mini-project'
-        env:
-          REPOSITORY: ${{ github.repository }}
-          COMMIT_SHA: ${{ github.sha }}
-        run: |
-          IMAGE="ghcr.io/${REPOSITORY,,}"
-          TAG="$IMAGE:$COMMIT_SHA"
-
-          docker tag churn-docker:ci "$TAG"
-          docker push "$TAG"
-
-          echo "Published: $TAG"
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ghcr.io/biglurch/mobil-churn-mini-project:${{ github.sha }}
+          cache-from: type=gha,scope=churn-vg
+          cache-to: type=gha,scope=churn-vg,mode=max
 
       - name: Pull and verify published image
         if: >-
           github.event_name == 'push' &&
           github.ref == 'refs/heads/main' &&
-          github.repository == 'kevinbrunomlops/mobil-churn-laboration'
+          github.repository == 'BigLurch/mobil-churn-mini-project'
         env:
           REPOSITORY: ${{ github.repository }}
           COMMIT_SHA: ${{ github.sha }}
