@@ -30,7 +30,7 @@ concurrency:
 jobs:
   andringar:
     name: Kontrollera ändrade filer
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     permissions:
       contents: read
@@ -80,7 +80,7 @@ jobs:
     name: Test Python ${{ matrix.python-version }}
     needs: andringar
     if: needs.andringar.outputs.ci == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     strategy:
       fail-fast: false
@@ -104,7 +104,7 @@ jobs:
     name: Validate customer data
     needs: andringar
     if: needs.andringar.outputs.ci == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
@@ -124,7 +124,7 @@ jobs:
   train:
     name: Train model
     needs: [test, datakontroll]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
@@ -161,7 +161,7 @@ jobs:
   utvardera:
     name: Evaluate model
     needs: train
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
@@ -195,7 +195,7 @@ jobs:
   docker:
     name: Build and smoke-test Docker image
     needs: utvardera
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     permissions:
       contents: read
@@ -329,7 +329,7 @@ jobs:
     name: Generate call list
     needs: utvardera
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
@@ -359,7 +359,7 @@ jobs:
   ci_gate:
   
     name: CI Gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     if: always()
 
@@ -414,7 +414,7 @@ jobs:
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main' &&
       github.repository == 'BigLurch/mobil-churn-mini-project'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     environment:
       name: production
