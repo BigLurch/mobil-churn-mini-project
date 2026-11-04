@@ -423,7 +423,7 @@ jobs:
       contents: read
 
     env:
-      KUBECONFIG: ${{ runner.temp }}/kubeconfig
+      KUBECONFIG: /tmp/churn-kubeconfig
       CLUSTER_CONTEXT: mlops-ht26
       KUBE_NAMESPACE: jonas-johansson
       IMAGE: ghcr.io/biglurch/mobil-churn-mini-project:${{ github.sha }}
@@ -502,3 +502,7 @@ jobs:
             get deployments,pods,services
 
           echo "PASS: Kubernetes deployment uses $IMAGE"
+      
+      - name: Remove temporary kubeconfig
+        if: always()
+        run: rm -f "$KUBECONFIG"
