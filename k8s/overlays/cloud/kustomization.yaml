@@ -9,4 +9,4 @@ patches:
 
 images:
   - name: ghcr.io/biglurch/mobil-churn-mini-project
-    newTag: 23a1409e04c38d3ff50e5cdebaf90fb06be5aac1
+    newTag: c6b29927110e4eb3b820d8da5042c0737b102750
