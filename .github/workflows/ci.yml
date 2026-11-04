@@ -256,6 +256,15 @@ jobs:
       - name: Run Docker smoke-test
         run: bash scripts/smoke_test.sh churn-docker:ci
 
+      - name: Inspect published image platforms
+        if: >-
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          github.repository == 'BigLurch/mobil-churn-mini-project'
+        env:
+          IMAGE: ghcr.io/biglurch/mobil-churn-mini-project:${{ github.sha }}
+        run: docker buildx imagetools inspect "$IMAGE"
+
       - name: Log in to GHCR
         if: >-
           github.event_name == 'push' &&
@@ -289,16 +298,10 @@ jobs:
           github.ref == 'refs/heads/main' &&
           github.repository == 'BigLurch/mobil-churn-mini-project'
         env:
-          REPOSITORY: ${{ github.repository }}
-          COMMIT_SHA: ${{ github.sha }}
+          IMAGE: ghcr.io/biglurch/mobil-churn-mini-project:${{ github.sha }}
         run: |
-          IMAGE="ghcr.io/${REPOSITORY,,}:$COMMIT_SHA"
-
-          docker image rm "$IMAGE"
           docker pull "$IMAGE"
           bash scripts/smoke_test.sh "$IMAGE"
-
-          echo "PASS: Published image pulled and verified"
 
   ringlista:
     name: Generate call list
