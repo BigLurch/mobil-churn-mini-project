@@ -30,7 +30,7 @@ concurrency:
 jobs:
   andringar:
     name: Kontrollera ändrade filer
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     permissions:
       contents: read
@@ -80,7 +80,7 @@ jobs:
     name: Test Python ${{ matrix.python-version }}
     needs: andringar
     if: needs.andringar.outputs.ci == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     strategy:
       fail-fast: false
@@ -104,7 +104,7 @@ jobs:
     name: Validate customer data
     needs: andringar
     if: needs.andringar.outputs.ci == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
@@ -124,7 +124,7 @@ jobs:
   train:
     name: Train model
     needs: [test, datakontroll]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
@@ -161,7 +161,7 @@ jobs:
   utvardera:
     name: Evaluate model
     needs: train
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
@@ -195,7 +195,7 @@ jobs:
   docker:
     name: Build and smoke-test Docker image
     needs: utvardera
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     permissions:
       contents: read
@@ -329,7 +329,7 @@ jobs:
     name: Generate call list
     needs: utvardera
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
@@ -359,7 +359,7 @@ jobs:
   ci_gate:
   
     name: CI Gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     if: always()
 
@@ -405,3 +405,104 @@ jobs:
           done
 
           echo "Alla obligatoriska CI-jobb passerade."
+
+  
+  deploy:
+    name: Deploy to school Kubernetes
+    needs: [ci_gate, docker]
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      github.repository == 'BigLurch/mobil-churn-mini-project'
+    runs-on: ubuntu-24.04
+
+    environment:
+      name: production
+
+    permissions:
+      contents: read
+
+    env:
+      KUBECONFIG: /tmp/churn-kubeconfig
+      CLUSTER_CONTEXT: mlops-ht26
+      KUBE_NAMESPACE: jonas-johansson
+      IMAGE: ghcr.io/biglurch/mobil-churn-mini-project:${{ github.sha }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure Kubernetes access
+        env:
+          KUBE_CONFIG_SECRET: ${{ secrets.KUBE_CONFIG }}
+        run: |
+          test -n "$KUBE_CONFIG_SECRET"
+          umask 077
+          printf '%s' "$KUBE_CONFIG_SECRET" > "$KUBECONFIG"
+
+          kubectl config get-contexts -o name | grep -Fx "$CLUSTER_CONTEXT"
+          kubectl --context "$CLUSTER_CONTEXT" \
+            -n "$KUBE_NAMESPACE" auth can-i patch deployments
+
+      - name: Set deployment image to workflow SHA
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path("k8s/overlays/cloud/kustomization.yaml")
+          content = path.read_text(encoding="utf-8")
+
+          updated, count = re.subn(
+              r"(?m)^([ \t]*newTag:[ \t]*).*$",
+              lambda match: match.group(1) + os.environ["GITHUB_SHA"],
+              content,
+          )
+
+          if count != 1:
+              raise SystemExit("Expected exactly one newTag in cloud overlay")
+
+          path.write_text(updated, encoding="utf-8")
+          print(f"Deployment image SHA: {os.environ['GITHUB_SHA']}")
+          PY
+
+          kubectl kustomize k8s/overlays/cloud
+
+      - name: Validate Kubernetes manifests
+        run: |
+          kubectl --context "$CLUSTER_CONTEXT" \
+            -n "$KUBE_NAMESPACE" \
+            apply --dry-run=server -k k8s/overlays/cloud
+
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl --context "$CLUSTER_CONTEXT" \
+            -n "$KUBE_NAMESPACE" \
+            apply -k k8s/overlays/cloud
+
+      - name: Verify rolling update
+        run: |
+          kubectl --context "$CLUSTER_CONTEXT" \
+            -n "$KUBE_NAMESPACE" \
+            rollout status deployment/churn-api --timeout=180s
+
+          ACTUAL_IMAGE=$(kubectl --context "$CLUSTER_CONTEXT" \
+            -n "$KUBE_NAMESPACE" \
+            get deployment churn-api \
+            -o jsonpath='{.spec.template.spec.containers[?(@.name=="churn-api")].image}')
+
+          test "$ACTUAL_IMAGE" = "$IMAGE"
+
+          kubectl --context "$CLUSTER_CONTEXT" \
+            -n "$KUBE_NAMESPACE" \
+            get deployments,pods,services
+
+          echo "PASS: Kubernetes deployment uses $IMAGE"
+      
+      - name: Remove temporary kubeconfig
+        if: always()
+        run: rm -f "$KUBECONFIG"
